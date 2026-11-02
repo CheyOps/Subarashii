@@ -1,0 +1,151 @@
+# Built-in defaults. Override any key in config/config.yaml (mounted at /config),
+# or per job from the web UI / CLI --set key=value.
+
+paths:
+  assets: /assets          # model weights and caches
+  data: /data              # input/, output/, jobs/
+
+input:
+  language: auto           # ja | zh | ko | auto (from the audio track's tag, else detected from the speech)
+
+# Per source language: preferred audio-track tags, the second speech recognizer (a fine-tune that
+# fails on different lines than large-v3; "" = large-v3 only), how many English syllables one
+# spoken unit (Japanese mora / Chinese or Korean syllable) is worth, and known recognizer
+# hallucinations (lines containing them are dropped).
+languages:
+  ja:
+    audio_tags: [jpn, ja]
+    asr_model: litagin/anime-whisper
+    unit_to_en_syllable: 0.62
+    hallucination_phrases: [ご視聴ありがとうございました, チャンネル登録, 字幕, おやすみなさい。おやすみなさい, 次回予告]
+  zh:
+    audio_tags: [chi, zho, zh, cmn, chs, cht]
+    asr_model: BELLE-2/Belle-whisper-large-v3-zh-punct
+    unit_to_en_syllable: 1.0
+    hallucination_phrases: [字幕由, 请不吝点赞, 点赞订阅, 谢谢观看, 感谢观看, 明镜与点点]
+  ko:
+    audio_tags: [kor, ko]
+    asr_model: ghost613/whisper-large-v3-turbo-korean
+    asr_generation_config: openai/whisper-large-v3-turbo  # the fine-tune ships without one
+    unit_to_en_syllable: 0.7
+    hallucination_phrases: [시청해주셔서 감사합니다, 구독과 좋아요, 구독 좋아요, MBC 뉴스, 자막 제공]
+
+separation:
+  # audio-separator model; BS-RoFormer gives clean vocals.
+  model: model_bs_roformer_ep_317_sdr_12.9755.ckpt
+  chunk_seconds: 60          # separated piece by piece (crossfaded) so progress can be reported
+
+asr:
+  fallback_model: large-v3       # faster-whisper: first choice per line, and language detection
+  compute_type: float16
+  beam_size: 5
+  vad_threshold: 0.5
+  vad_min_silence_ms: 250        # pauses longer than this end an utterance
+  vad_pad_ms: 80
+  speaker_change_threshold: 0.85 # cosine distance between adjacent 1 s windows that splits an utterance (0 = off)
+  max_line_seconds: 12.0
+  min_line_seconds: 0.25
+
+diarization:
+  embedding_model: speechbrain/spkrec-ecapa-voxceleb
+  distance_threshold: 0.62   # cosine distance; lower = more speakers
+  min_cluster_line_seconds: 1.5  # only lines this long shape the clusters; shorter ones join the nearest
+  refine_passes: 3
+  centroid_merge: 0.8        # merge clusters whose average voices are this similar (same actor)
+  min_speaker_seconds: 3.0   # smaller clusters get merged into the nearest speaker...
+  min_speaker_share: 0.01    # ...or smaller than this share of all speech, whichever is larger
+  max_speakers: 0            # 0 = automatic
+  merge_gap: 0.6             # re-join same-speaker fragments split by a pause shorter than this (s)
+
+overlap:
+  # Where two characters talk at once, pyannote finds the crosstalk and MossFormer2 splits it into
+  # two voices, so each gets its own line, speaker and dub.
+  enabled: true
+  segmentation_model: ""     # folder with pyannote segmentation-3.0 ("" = the copy shipped in models/)
+  separation_model: alibabasglab/MossFormer2_SS_16K
+  scan: true                 # also separate all speech to find crosstalk pyannote misses (a few minutes per episode)
+  detect_threshold: 0.5      # pyannote overlap score that counts as crosstalk; lower finds more (false finds are checked below)
+  min_overlap: 0.2           # shortest crosstalk handled (s)
+  context: 1.0               # seconds of audio either side of the crosstalk given to the separator
+  max_window: 10.0           # longer crosstalk (usually 3+ people) stays with the dominant voice (s)
+  min_share_db: -15.0        # a separated voice this much quieter than the original is only leakage
+  max_sync: 0.75             # two "voices" active this much in lockstep (overlap / union) are one voice split in two
+  same_words: 0.5            # ...and so are two whose transcripts mostly match (or one sits inside the other)
+  same_voice: 0.6            # ECAPA similarity above which the two "voices" are one person
+  distinct_voice: 0.3        # ...and below which they are surely two, even if they look in lockstep
+
+profile:
+  age_gender_model: audeering/wav2vec2-large-robust-24-ft-age-gender
+  ref_target_seconds: 11.0   # reference audio length per speaker (IndexTTS uses up to 15s)
+  ref_min_clip: 1.5
+  ref_max_clip: 9.0
+
+llm:
+  provider: llamacpp          # llamacpp | openai | anthropic
+  temperature: 0.3
+  llamacpp:
+    url: http://host.docker.internal:11434
+    api_key: ""
+    model: qwen3-30b-a3b
+    unload_all_before_gpu: true  # free VRAM held by any router model before GPU stages
+    extra_body:
+      chat_template_kwargs: {enable_thinking: false}
+  openai:
+    url: ""
+    api_key: ""
+    model: ""
+  anthropic:
+    api_key: ""               # "" = the ANTHROPIC_API_KEY environment variable
+    model: claude-opus-5-5
+    effort: medium
+
+translation:
+  batch_size: 20
+  context_lines: 6
+  honorifics: drop            # drop | keep  (Japanese -san, -kun, senpai; Korean -ssi, -nim ...)
+  max_transcript_chars: 60000 # cap for the character-analysis prompt
+
+check:
+  # After translating, an LLM editor reads the script scene by scene and re-translates lines a
+  # viewer would misunderstand; a rewrite is kept only if a blind A/B judge prefers it. Changed
+  # scenes are read again, up to `rounds` passes.
+  enabled: true
+  window: 30                  # lines per read
+  context_lines: 6
+  rounds: 2
+  # judging a garbled transcript needs a stronger model than translating it; with llama.cpp the
+  # check uses this one ("" = the translator's model). Other providers use their own model.
+  llamacpp_model: qwen3.5-35b-a3b
+
+timing:
+  # English syllables/sec the dub aims for; derived per line from the original pace.
+  min_syllable_rate: 2.6
+  max_syllable_rate: 6.0
+  tts_syllable_rate: 4.6      # initial guess of TTS pace, refined per speaker while synthesizing
+  min_gap: 0.08               # keep at least this much silence before the next line (s)
+  max_overflow: 0.5           # a line may run this far past its original end if the gap is free (s)
+  min_duration_factor: 0.8    # fastest IndexTTS speed-up allowed (0.8 = 1.25x faster)
+  max_slowdown: 1.12          # gently slow short lines toward the original length
+  slowdown_below: 0.7         # ...only when the take is shorter than this fraction of the original
+  max_extra_stretch: 1.10     # last-resort rubberband speed-up after all candidates fail
+  refit_rounds: 1             # LLM rewrite passes for lines that still overflow
+
+tts:
+  url: http://tts:8000
+  emotion_from_original: true # use each original line as the emotion reference
+  emo_alpha: 0.75
+  seed: 1234
+  timeout: 600
+
+mix:
+  sample_rate: 44100
+  keep_nonspeech_vocals: true # keep gasps/laughs/screams from the original outside dubbed lines
+  vocal_pad: 0.12
+  dub_gain_db: 0.0
+  loudness_match: true        # match each dubbed line to the original line's loudness
+  max_gain_db: 12.0
+
+output:
+  keep_original_audio: true
+  subtitles: true
+  audio_bitrate: 192k

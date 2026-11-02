@@ -1,0 +1,18 @@
+[project]
+name = "subarashii"
+version = "0.1.0"
+description = "Japanese, Chinese and Korean to English AI dubbing: per-character voice cloning with timing-aware translation"
+requires-python = ">=3.10,<3.12"
+
+[project.scripts]
+subarashii = "subarashii.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["subarashii*"]
+
+[tool.setuptools.package-data]
+subarashii = ["default_config.yaml", "web/static/*"]

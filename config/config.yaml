@@ -1,0 +1,15 @@
+# Local overrides on top of subarashii/default_config.yaml. Uncomment what you need.
+
+# llm:
+#   provider: llamacpp
+#   llamacpp:
+#     model: qwen3.5-35b-a3b      # any id from the llama.cpp router's /models list
+
+# translation:
+#   honorifics: keep               # keep -san/-kun/senpai
+
+# diarization:
+#   distance_threshold: 0.55       # lower = split voices into more characters
+
+# timing:
+#   max_overflow: 0.7              # let lines run a bit longer into silence

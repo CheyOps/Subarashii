@@ -1,0 +1,46 @@
+name: subarashii
+
+x-common: &common
+  user: "${UID:-1000}:${GID:-1000}"
+  volumes:
+    - ${ASSETS_DIR}:/assets
+    - ${ASSETS_DIR}/data:/data
+    - ./config:/config:ro
+  gpus: all
+  restart: unless-stopped
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+services:
+  app:
+    <<: *common
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: app
+    image: subarashii-app:latest
+    depends_on: [tts]
+    ports:
+      - "${WEB_PORT:-7860}:7860"
+    environment:
+      GS_TTS_URL: http://tts:8000
+      GS_LLM_PROVIDER: ${LLM_PROVIDER:-llamacpp}
+      GS_LLAMACPP_URL: ${LLAMACPP_URL:-http://host.docker.internal:11434}
+      GS_LLAMACPP_API_KEY: ${LLAMACPP_API_KEY:-}
+      GS_LLAMACPP_MODEL: ${LLAMACPP_MODEL:-qwen3-30b-a3b}
+      GS_OPENAI_URL: ${OPENAI_URL:-}
+      GS_OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GS_OPENAI_MODEL: ${OPENAI_MODEL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GS_ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-opus-5-5}
+
+  tts:
+    <<: *common
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: tts
+    image: subarashii-tts:latest
+    environment:
+      INDEXTTS_MODEL_DIR: /assets/models/indextts-2.5
+      INDEXTTS_REPO: IndexTeam/IndexTTS-2.5

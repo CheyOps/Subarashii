@@ -1,0 +1,19 @@
+# torch / torchaudio come from the shared base stage (docker/Dockerfile)
+faster-whisper==1.2.1
+audio-separator[gpu]==0.48.0
+speechbrain==1.1.2
+pyannote.audio==3.4.0
+transformers==4.57.1
+scikit-learn>=1.5
+librosa==0.11.0
+soundfile>=0.12
+pykakasi==2.3.0
+pypinyin==0.55.0
+numpy>=1.26,<2.3
+pyyaml>=6
+pydantic>=2.7
+httpx>=0.27
+anthropic>=0.75
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
