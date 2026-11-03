@@ -102,6 +102,7 @@ def run(job: Job, cfg: Cfg):
     segs = vad_segments(y, c)
 
     crosstalk = cfg.overlap.enabled and segs
+    ct = None
     if (c.speaker_change_threshold or crosstalk) and segs:
         from speechbrain.inference.speaker import EncoderClassifier
 
@@ -116,22 +117,24 @@ def run(job: Job, cfg: Cfg):
             segs = split_speaker_changes(y, segs, enc, c.speaker_change_threshold)
             if len(segs) > before:
                 job.log(f"split {len(segs) - before} utterances at a change of voice")
-        if not job.p.language:
-            detect_language(job, cfg, y, [(a, b) for a, b in segs if b - a >= c.min_line_seconds])
-        spans = [(a, b, []) for a, b in segs]
         if crosstalk:
             job.progress(0.1, "looking for crosstalk", force=True)
-            spans = overlap.split_crosstalk(job, cfg, y, spans, enc, lambda x: vad_segments(x, c),
-                                            lambda clips: _check_asr(job, cfg, clips), 0.1, 0.2)
+            ct = overlap.find_crosstalk(job, cfg, y, [(a, b, []) for a, b in segs], enc, lambda x: vad_segments(x, c), 0.1, 0.2)
         del enc
         empty_torch_cache()
-    else:
-        spans = [(a, b, []) for a, b in segs]
 
-    spans = [s for s in spans if s[1] - s[0] >= c.min_line_seconds]
+    spans = [(a, b, []) for a, b in segs]
+    long = lambda s: s[1] - s[0] >= c.min_line_seconds  # noqa: E731
     if not job.p.language:
-        detect_language(job, cfg, y, [(a, b) for a, b, _ in spans])
-    texts = transcribe_spans(job, cfg, y, [(a, b) for a, b, _ in spans], seps=[sep for _, _, sep in spans])
+        detect_language(job, cfg, y, [(a, b) for a, b in segs if b - a >= c.min_line_seconds])
+    # the lines proposed crosstalk splits would make are transcribed in the same pass, so the
+    # recognizers load once; resolve() then keeps the splits whose lines make sense
+    heard = _transcribe(job, cfg, y, [s for s in spans if long(s)] + (ct.lines() if ct else []), 0.2, 0.9)
+    if ct:
+        spans = overlap.resolve(job, cfg, spans, ct, lambda s: heard[_key(s)][0])
+        heard.update(_transcribe(job, cfg, y, [s for s in spans if long(s) and _key(s) not in heard], 0.9, 0.95))
+    spans = [s for s in spans if long(s)]
+    texts = [heard[_key(s)] for s in spans]
     phrases = lang_cfg(cfg, job_lang(job, cfg)).hallucination_phrases
 
     lines: list[Line] = []
@@ -174,32 +177,35 @@ def detect_language(job: Job, cfg: Cfg, y: np.ndarray, segs, sample_seconds=60.0
     job.log(f"detected spoken language: {LANGS[best].name} ({p:.0%})")
 
 
-def _check_asr(job: Job, cfg: Cfg, clips: list[np.ndarray]) -> list[str]:
-    """What each line a crosstalk split would make says ("" when neither recognizer heard words)."""
-    return [best for best, _ in transcribe_clips(job, cfg, clips, 0.16, 0.2)] if clips else []
+def _key(span) -> tuple:
+    a, b, sep = span
+    return round(a, 3), round(b, 3), tuple(r.file for r in sep)
+
+
+def _transcribe(job: Job, cfg: Cfg, y: np.ndarray, spans, lo: float, hi: float) -> dict:
+    """{_key(span): (best, alternative)} for (start, end, sep) spans."""
+    todo = list({_key(s): s for s in spans}.values())
+    if not todo:
+        return {}
+    texts = transcribe_spans(job, cfg, y, [(a, b) for a, b, _ in todo], lo, hi, seps=[sep for _, _, sep in todo])
+    return {_key(s): t for s, t in zip(todo, texts)}
 
 
 def transcribe_spans(job: Job, cfg: Cfg, y: np.ndarray, spans: list[tuple[float, float]], lo=0.2, hi=0.9,
                      seps=None) -> list[tuple[str, str]]:
-    """Returns (best, alternative) per span. seps: per span, the separated voice to hear in place of
-    crosstalk (overlap.clip)."""
-    clips = [overlap.clip(job, y, SR, a, b, sep) for (a, b), sep in zip(spans, seps or [[]] * len(spans))]
-    return transcribe_clips(job, cfg, clips, lo, hi)
-
-
-def transcribe_clips(job: Job, cfg: Cfg, clips: list[np.ndarray], lo=0.2, hi=0.9) -> list[tuple[str, str]]:
-    """Returns (best, alternative) per clip: large-v3 first when usable, the fine-tuned model otherwise."""
+    """Returns (best, alternative) per span: large-v3 first when usable, the fine-tuned model otherwise.
+    seps: per span, the separated voice to hear in place of crosstalk (overlap.clip)."""
     c = cfg.asr
     lang = job_lang(job, cfg)
     lc = lang_cfg(cfg, lang)
+    clips = [overlap.clip(job, y, SR, a, b, sep) for (a, b), sep in zip(spans, seps or [[]] * len(spans))]
     mid = (lo + hi) / 2
     alt = (_finetuned_whisper(job, cfg, lc.asr_model, lc.get("asr_generation_config", ""), lang.name, clips, lo, mid)
            if lc.asr_model else [""] * len(clips))
     v3 = _faster_whisper(job, cfg, lang.code, clips, mid, hi) if c.fallback_model else [""] * len(clips)
     out = []
-    for x, t1, t2 in zip(clips, v3, alt):
-        dur = len(x) / SR
-        ok1, ok2 = _usable(t1, dur, lc.hallucination_phrases), _usable(t2, dur, lc.hallucination_phrases)
+    for (a, b), t1, t2 in zip(spans, v3, alt):
+        ok1, ok2 = _usable(t1, b - a, lc.hallucination_phrases), _usable(t2, b - a, lc.hallucination_phrases)
         best, alt = (t1, t2 if ok2 else "") if ok1 else (t2 if ok2 else "", "")
         out.append((best, alt if alt != best else ""))
     return out

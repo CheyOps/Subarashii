@@ -1,4 +1,8 @@
-"""Rebuild the soundtrack: music/SFX + English lines + (optionally) original non-dialogue vocals."""
+"""Rebuild the soundtrack: music/SFX + English lines + (optionally) original non-dialogue vocals.
+
+Each English line is set to the loudness of the original line it replaces, as heard (K-weighted),
+and kept at least min_speech_over_bg_db above the music/effects under it so it stays clear.
+"""
 
 import numpy as np
 
@@ -23,6 +27,21 @@ def _ramp_mask(n: int, sr: int, regions: list[tuple[float, float]], ramp: float 
     return mask
 
 
+def _gain(job: Job, m, line, y: np.ndarray, bg: np.ndarray, sr: int) -> float:
+    """dB to apply to an English take: the original line's loudness, lifted (by at most
+    max_boost_db) where needed to stay min_speech_over_bg_db above the background. Turning a take
+    down is unlimited; turning it up stops at max_boost_db (beyond that it mostly raises noise),
+    and no line may peak above -0.2 dBFS."""
+    if not m.loudness_match or not line.ja_clip or not job.path(line.ja_clip).is_file():
+        return 0.0
+    orig, _ = audio.load(job.path(line.ja_clip), sr=sr, mono=True)
+    target = audio.speech_loudness(orig, sr)
+    if bg.size:
+        target = max(target, min(audio.loudness(bg, sr) + m.min_speech_over_bg_db, target + m.max_boost_db))
+    peak = float(np.abs(y).max(initial=0))
+    return min(target - audio.speech_loudness(y, sr), m.max_boost_db, 20 * np.log10(0.977 / max(peak, 1e-6)))
+
+
 def run(job: Job, cfg: Cfg):
     m = cfg.mix
     sr = m.sample_rate
@@ -32,11 +51,13 @@ def run(job: Job, cfg: Cfg):
     inst, voc = inst[:n], voc[:n]
     dub = np.zeros(n, dtype=np.float32)
 
+    bg = inst.mean(axis=1)
     dubbed, regions = 0, []
     for line in job.p.lines:
         if line.skip or line.lyric or not line.tts or not job.path(line.tts.file).is_file():
             continue
         y, _ = audio.load(job.path(line.tts.file), sr=sr, mono=True)
+        line.tts.gain_db = round(_gain(job, m, line, y, audio.segment(bg, sr, line.start, line.start + len(y) / sr), sr), 2)
         y = y * audio.db_to_amp(line.tts.gain_db + m.dub_gain_db)
         a = int(line.start * sr)
         b = min(n, a + len(y))

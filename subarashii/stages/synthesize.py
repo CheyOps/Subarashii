@@ -117,15 +117,10 @@ class Fitter:
         return self._store(line, y, d, text, factor, stretch, fit, seed)
 
     def _store(self, line, y, d, text, factor, stretch, fit, seed) -> bool:
-        gain = 0.0
-        if self.cfg.mix.loudness_match and line.ja_clip:
-            orig, _ = audio.load(self.job.path(line.ja_clip), mono=True)
-            gain = audio.active_rms_db(orig, self.sr) - audio.active_rms_db(y, self.sr)
-            gain = max(-self.cfg.mix.max_gain_db, min(self.cfg.mix.max_gain_db, gain))
         rel = f"lines/{line.id:04d}_en.wav"
         audio.save(self.job.path(rel), audio.fade(y, self.sr, 0.005, 0.03), self.sr)
         line.tts = TTSTake(file=rel, text=text, duration=round(d, 3), duration_factor=round(factor, 3),
-                           stretch=round(stretch, 3), gain_db=round(gain, 2), fit=fit, seed=seed)
+                           stretch=round(stretch, 3), fit=fit, seed=seed)  # gain_db is set by mix
         line.en = text  # a shorter candidate may have been used; show what is actually spoken
         line.dirty = False
         return fit not in ("overflow",)
