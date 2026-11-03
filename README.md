@@ -119,6 +119,7 @@ settings". The knobs you'll use most:
 | `asr.speaker_change_threshold` | `0.85` | lower → split utterances at voice changes more eagerly |
 | `timing.max_overflow` | `0.5` | seconds a line may run past its original end |
 | `timing.min_duration_factor` | `0.8` | fastest allowed TTS speed-up |
+| `mix.min_speech_over_bg_db` | `6.0` | keep dubbed dialogue at least this far above music/effects |
 | `tts.emo_alpha` | `0.75` | how strongly the original line's emotion transfers |
 | `mix.keep_nonspeech_vocals` | `true` | keep the original gasps, laughs and screams |
 

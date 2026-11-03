@@ -70,6 +70,31 @@ def active_rms_db(y: np.ndarray, sr: int, frame: float = 0.05, top: float = 0.5)
     return 20 * np.log10(max(float(np.mean(e)), 1e-6))
 
 
+def k_weight(y: np.ndarray, sr: int) -> np.ndarray:
+    """ITU-R BS.1770 pre-filter (high shelf +4 dB above ~1.5 kHz, high-pass ~38 Hz): weights the
+    signal the way loudness is heard, so voices with different tone compare fairly."""
+    from scipy.signal import lfilter
+
+    w = 2 * np.pi * 1681.97 / sr
+    A, alpha = 10 ** (3.99984 / 40), np.sin(w) / (2 * 0.7071752)
+    cw, sa = np.cos(w), 2 * np.sqrt(A) * alpha
+    y = lfilter([A * ((A + 1) + (A - 1) * cw + sa), -2 * A * ((A - 1) + (A + 1) * cw), A * ((A + 1) + (A - 1) * cw - sa)],
+                [(A + 1) - (A - 1) * cw + sa, 2 * ((A - 1) - (A + 1) * cw), (A + 1) - (A - 1) * cw - sa], y)
+    w = 2 * np.pi * 38.13547 / sr
+    alpha, cw = np.sin(w) / (2 * 0.5003270), np.cos(w)
+    return lfilter([(1 + cw) / 2, -(1 + cw), (1 + cw) / 2], [1 + alpha, -2 * cw, 1 - alpha], y).astype(np.float32)
+
+
+def speech_loudness(y: np.ndarray, sr: int) -> float:
+    """Loudness of speech as heard (dB): K-weighted, over its louder half so pauses don't count."""
+    return active_rms_db(k_weight(y, sr), sr)
+
+
+def loudness(y: np.ndarray, sr: int) -> float:
+    """Loudness of a whole stretch of sound as heard (dB, K-weighted)."""
+    return rms_db(k_weight(y, sr))
+
+
 def trim(y: np.ndarray, sr: int, top_db: float = 40.0, pad: float = 0.03) -> np.ndarray:
     import librosa
 
