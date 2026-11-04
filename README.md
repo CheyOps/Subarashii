@@ -32,6 +32,8 @@ voice is cloned from the original actor. A burly man stays deep and gravelly, an
 child. The emotion comes from the line itself: IndexTTS-2.5 takes the original clip as an emotion
 reference, so a shouted original line produces a shouted English one.
 
+Each line is synthesized with several seeds (`tts.voice_candidates`) and the take closest to the original speaker's voice is kept; the job log reports the resulting voice-match score.
+
 **Timing fit.** Each line gets a time slot: its original span, which can extend up to `timing.max_overflow`
 seconds into the silence before the next line. Synthesis tries, in order:
 
@@ -121,6 +123,7 @@ settings". The knobs you'll use most:
 | `timing.min_duration_factor` | `0.8` | fastest allowed TTS speed-up |
 | `mix.min_speech_over_bg_db` | `6.0` | keep dubbed dialogue at least this far above music/effects |
 | `tts.emo_alpha` | `0.75` | how strongly the original line's emotion transfers |
+| `tts.voice_candidates` | `4` | takes synthesized per line; the one that sounds most like the original speaker (ECAPA voice similarity) is kept. `1` = off; each extra take adds synthesis time |
 | `mix.keep_nonspeech_vocals` | `true` | keep the original gasps, laughs and screams |
 
 ## GPU memory
