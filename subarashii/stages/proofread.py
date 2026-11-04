@@ -39,8 +39,9 @@ SCHEMA = {
 }
 
 # punctuation is stripped before the model compares versions, otherwise it prefers whichever
-# recognizer punctuates more, not the one that heard the words right
-_PUNCT = re.compile(r"[、。，,.!?！？…・「」『』“”‘’\"'；;：:（）()~〜—-]")
+# recognizer punctuates more, not the one that heard the words right. Apostrophes and hyphens
+# inside a word are spelling (Ukrainian м'ясо, Russian что-нибудь), not punctuation.
+_PUNCT = re.compile(r"[、。，,.!?！？…・「」『』“”„«»\"；;：:（）()~〜—–]|(?<!\w)['‘’ʼ-]|['‘’ʼ-](?!\w)")
 
 
 def _bare(text: str) -> str:

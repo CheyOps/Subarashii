@@ -24,10 +24,10 @@ SR = 16000
 _HAS_TEXT = re.compile(r"[\w぀-ヿ一-鿿]")
 
 
-def _usable(text: str, dur: float, phrases) -> bool:
-    if not text or not _HAS_TEXT.search(text) or any(p in text for p in phrases):
+def _usable(text: str, dur: float, lc) -> bool:
+    if not text or not _HAS_TEXT.search(text) or any(p in text for p in lc.hallucination_phrases):
         return False
-    return len(text) <= 14 * dur + 8  # runaway/hallucinated repetition
+    return len(text) <= lc.get("max_chars_per_second", 14) * dur + 8  # runaway/hallucinated repetition
 
 
 def vad_segments(y: np.ndarray, c) -> list[tuple[float, float]]:
@@ -135,11 +135,11 @@ def run(job: Job, cfg: Cfg):
         heard.update(_transcribe(job, cfg, y, [s for s in spans if long(s) and _key(s) not in heard], 0.9, 0.95))
     spans = [s for s in spans if long(s)]
     texts = [heard[_key(s)] for s in spans]
-    phrases = lang_cfg(cfg, job_lang(job, cfg)).hallucination_phrases
+    lc = lang_cfg(cfg, job_lang(job, cfg))
 
     lines: list[Line] = []
     for (a, b, sep), (text, alt) in zip(spans, texts):
-        if _usable(text, b - a, phrases):
+        if _usable(text, b - a, lc):
             lines.append(Line(id=len(lines) + 1, start=round(a, 3), end=round(b, 3), ja=text, ja_asr=text, ja_alt=alt,
                               sep=sep))
     job.p.lines = lines
@@ -171,10 +171,13 @@ def detect_language(job: Job, cfg: Cfg, y: np.ndarray, segs, sample_seconds=60.0
     best = max(LANGS, key=lambda c: probs.get(c, 0.0) + (probs.get("yue", 0.0) if c == "zh" else 0.0))
     p = probs.get(best, 0.0) + (probs.get("yue", 0.0) if best == "zh" else 0.0)
     if p < 0.3:
-        raise RuntimeError(f"the dialogue doesn't sound like Japanese, Chinese or Korean (detected '{top}'); "
-                           f"set the language explicitly if it is one of those")
+        raise RuntimeError(f"the dialogue doesn't sound like {', '.join(l.name for l in LANGS.values())} "
+                           f"(detected '{top}'); set the language explicitly if it is one of those")
     job.p.language = best
-    job.log(f"detected spoken language: {LANGS[best].name} ({p:.0%})")
+    # Whisper can mistake Ukrainian for Russian and vice versa on little speech
+    near = {"ru": "uk", "uk": "ru"}.get(best)
+    close = f", {LANGS[near].name} {probs.get(near, 0.0):.0%}" if near and probs.get(near, 0.0) >= p / 3 else ""
+    job.log(f"detected spoken language: {LANGS[best].name} ({p:.0%}{close})")
 
 
 def _key(span) -> tuple:
@@ -205,7 +208,7 @@ def transcribe_spans(job: Job, cfg: Cfg, y: np.ndarray, spans: list[tuple[float,
     v3 = _faster_whisper(job, cfg, lang.code, clips, mid, hi) if c.fallback_model else [""] * len(clips)
     out = []
     for (a, b), t1, t2 in zip(spans, v3, alt):
-        ok1, ok2 = _usable(t1, b - a, lc.hallucination_phrases), _usable(t2, b - a, lc.hallucination_phrases)
+        ok1, ok2 = _usable(t1, b - a, lc), _usable(t2, b - a, lc)
         best, alt = (t1, t2 if ok2 else "") if ok1 else (t2 if ok2 else "", "")
         out.append((best, alt if alt != best else ""))
     return out

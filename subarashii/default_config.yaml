@@ -6,12 +6,13 @@ paths:
   data: /data              # input/, output/, jobs/
 
 input:
-  language: auto           # ja | zh | ko | auto (from the audio track's tag, else detected from the speech)
+  language: auto           # ja | zh | ko | ru | uk | auto (from the audio track's tag, else detected from the speech)
 
 # Per source language: preferred audio-track tags, the second speech recognizer (a fine-tune that
 # fails on different lines than large-v3; "" = large-v3 only), how many English syllables one
-# spoken unit (Japanese mora / Chinese or Korean syllable) is worth, and known recognizer
-# hallucinations (lines containing them are dropped).
+# spoken unit (Japanese mora / syllable in the others) is worth, known recognizer hallucinations
+# (lines containing them are dropped) and max_chars_per_second (default 14; longer transcripts
+# are treated as runaway repetition).
 languages:
   ja:
     audio_tags: [jpn, ja]
@@ -29,6 +30,20 @@ languages:
     asr_generation_config: openai/whisper-large-v3-turbo  # the fine-tune ships without one
     unit_to_en_syllable: 0.7
     hallucination_phrases: [시청해주셔서 감사합니다, 구독과 좋아요, 구독 좋아요, MBC 뉴스, 자막 제공]
+  ru:
+    audio_tags: [rus, ru]
+    asr_model: antony66/whisper-large-v3-russian
+    unit_to_en_syllable: 0.72  # ru and uk: from FLEURS parallel sentences, scaled like ja/zh/ko
+    max_chars_per_second: 24   # alphabetic: a fast 2 s line is easily 40 characters
+    hallucination_phrases: [Субтитры сделал, Субтитры создавал, Субтитры подготовил, Редактор субтитров, DimaTorzok,
+                            Amara.org, Подписывайтесь на канал, Продолжение следует]
+  uk:
+    audio_tags: [ukr, uk]
+    asr_model: ""                # the only Whisper fine-tune tested worse than large-v3 on FLEURS
+    unit_to_en_syllable: 0.76
+    max_chars_per_second: 24
+    hallucination_phrases: [Субтитри зроблені, Субтитри створювалися, Редактор субтитрів, Amara.org,
+                            Підписуйтесь на канал, Дякую за перегляд]
 
 separation:
   # audio-separator model; BS-RoFormer gives clean vocals.

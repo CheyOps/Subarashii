@@ -10,7 +10,7 @@ import random
 
 from ..config import Cfg, deep_merge
 from ..gpu import TTSClient
-from ..lang import job_lang
+from ..lang import Lang, job_lang, name_in
 from ..llm import LLMError, get_llm
 from ..project import Job, Line
 from .translate import translate_lines
@@ -165,17 +165,20 @@ def _judge(job: Job, llm, lang: str, window, before, after, old: dict[int, str])
     return won
 
 
-def _invented_name(job: Job, l: Line, old: str) -> str:
+def _invented_name(job: Job, l: Line, old: str, source: Lang) -> str:
     """A name/term from the glossary that the rewrite brings in although the original line doesn't
-    contain it (any 2+ character piece of its original spelling). Weak models 'fix' unclear lines
-    by inserting a character who isn't there."""
+    contain it (any 2+ character piece of its original spelling; for Russian and Ukrainian, the stem
+    of any of its words). Weak models 'fix' unclear lines by inserting a character who isn't there."""
     src = l.ja + " " + l.ja_alt
     for g in job.p.glossary:
         words = [w for w in g["en"].split() if len(w) >= 3 and w[0].isupper()]
         if not any(w in l.en and w not in old for w in words):
             continue
         orig = g["ja"]
-        if not any(orig[i : i + 2] in src for i in range(max(1, len(orig) - 1))):
+        if source.inflected:
+            if not any(name_in(w, src, source) for w in orig.split()):
+                return g["en"]
+        elif not any(orig[i : i + 2] in src for i in range(max(1, len(orig) - 1))):
             return g["en"]
     return ""
 
@@ -198,7 +201,8 @@ def run(job: Job, cfg: Cfg):
     if cfg.llm.provider == "llamacpp" and c.get("llamacpp_model"):
         cfg = Cfg(deep_merge(cfg, {"llm": {"llamacpp": {"model": c.llamacpp_model}}}))
     llm = get_llm(cfg)
-    lang = job_lang(job, cfg).name
+    source = job_lang(job, cfg)
+    lang = source.name
     lines = [l for l in job.p.lines if _checkable(l)]
     for l in lines:
         l.check_note, l.check_unresolved = "", False
@@ -246,7 +250,7 @@ def run(job: Job, cfg: Cfg):
                 continue
             tried.update(l.id for l in fix)
             old = {l.id: saved[l.id][0] for l in fix if l.en.strip() != saved[l.id][0].strip()
-                   and not _invented_name(job, l, saved[l.id][0])}
+                   and not _invented_name(job, l, saved[l.id][0], source)}
             won = _judge(job, llm, lang, window, before, after, old) if old else set()
             for l in fix:
                 if l.id in won:

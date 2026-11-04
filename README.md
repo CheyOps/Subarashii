@@ -1,11 +1,11 @@
 # Subarashii
 
-Dockerized Japanese / Chinese (Mandarin) / Korean → English dubbing. Hand it a video; get back the same video with an
+Dockerized Japanese / Chinese (Mandarin) / Korean / Russian / Ukrainian → English dubbing. Hand it a video; get back the same video with an
 English dub track in which every character keeps **their own cloned voice**, delivered with the
 **emotion of the original line**, and timed to fit the original mouth movement.
 
 The spoken language is detected automatically (from the audio track's language tag, otherwise
-from the speech), or set it per job: the web form's *Spoken language*, `--lang ja|zh|ko` on the
+from the speech), or set it per job: the web form's *Spoken language*, `--lang ja|zh|ko|ru|uk` on the
 CLI, or `input.language` in the config. Per-language settings (second speech recognizer, timing
 ratio, known recognizer hallucinations) are under `languages:` in the config.
 
@@ -15,7 +15,7 @@ ratio, known recognizer hallucinations) are under `languages:` in the config.
 |---|-------|--------------|-------|
 | 1 | ingest | probe the video, extract the original-language audio track | ffmpeg |
 | 2 | separate | split dialogue from music/SFX | BS-RoFormer (audio-separator) |
-| 3 | transcribe | VAD cuts utterances at pauses, a voice-change check splits back-to-back speakers, crosstalk (two people at once) is split into one line per voice, then each utterance is transcribed | Silero VAD, ECAPA, pyannote segmentation-3.0 + MossFormer2 (crosstalk), faster-whisper large-v3 + a per-language fine-tune: litagin/anime-whisper (ja), BELLE-2/Belle-whisper-large-v3-zh-punct (zh), ghost613/whisper-large-v3-turbo-korean (ko); Whisper language ID when the language is auto |
+| 3 | transcribe | VAD cuts utterances at pauses, a voice-change check splits back-to-back speakers, crosstalk (two people at once) is split into one line per voice, then each utterance is transcribed | Silero VAD, ECAPA, pyannote segmentation-3.0 + MossFormer2 (crosstalk), faster-whisper large-v3 + a per-language fine-tune: litagin/anime-whisper (ja), BELLE-2/Belle-whisper-large-v3-zh-punct (zh), ghost613/whisper-large-v3-turbo-korean (ko), antony66/whisper-large-v3-russian (ru), large-v3 alone (uk); Whisper language ID when the language is auto |
 | 4 | diarize | group lines into characters by voice, then re-join same-speaker sentence fragments and re-transcribe them whole | SpeechBrain ECAPA + agglomerative clustering |
 | 5 | profile | per character: gender/age/pitch/pace estimates, best clean clips → voice reference, scene pictures; per line: original clip | audeering wav2vec2 age-gender, librosa |
 | 6 | proofread | LLM picks between the two recognizers' versions of each line using context | local LLM (llama.cpp) or Claude |
@@ -109,7 +109,7 @@ settings". The knobs you'll use most:
 | Key | Default | Effect |
 |-----|---------|--------|
 | `llm.llamacpp.model` | `qwen3-30b-a3b` | translator model (any id from the router's `/models`) |
-| `translation.honorifics` | `drop` | `keep` for Japanese -san / -kun / senpai and Korean -ssi / -nim |
+| `translation.honorifics` | `drop` | `keep` for Japanese -san / -kun / senpai, Korean -ssi / -nim, Russian / Ukrainian name-and-patronymic and diminutives |
 | `check.rounds` | `2` | script-check passes (`check.enabled=false` skips the check) |
 | `check.llamacpp_model` | `qwen3.5-35b-a3b` | model the script check uses with llama.cpp (`""` = the translator's) |
 | `diarization.distance_threshold` | `0.62` | lower → more distinct characters |
@@ -147,6 +147,11 @@ model can be reloaded mid-job and cause CUDA OOM. In that case, re-run the job f
 - **Chinese and Korean** are newer than Japanese and less tested. Chinese support targets Mandarin; Cantonese is detected as Chinese but
   transcribed less accurately. Spoken Chinese gives no dialogue cue for a
   character's gender, so it comes from the voice analysis and the LLM only.
+- **Russian and Ukrainian** are the newest and haven't been tested on real episodes yet; their speech
+  recognizers and timing ratio were chosen on read speech (FLEURS). Ukrainian uses large-v3 alone: the
+  only Whisper fine-tune recognized less accurately. Whisper can confuse the two on little
+  speech, so the log shows the runner-up when it's close; set the language explicitly for short clips or
+  dialogue that mixes them.
 - **No lip re-animation:** the video is never altered; sync comes from timing and phrasing only.
 
 ## Credits and licenses
@@ -160,7 +165,7 @@ segmentation-3.0, model weights are not included and download on first use under
 
 - [IndexTTS-2.5](https://huggingface.co/IndexTeam/IndexTTS-2.5): voice cloning and synthesis
 - [Whisper large-v3](https://huggingface.co/openai/whisper-large-v3) (and [large-v3 turbo](https://huggingface.co/openai/whisper-large-v3-turbo)'s generation config for Korean) and [faster-whisper](https://github.com/SYSTRAN/faster-whisper): speech recognition
-- [anime-whisper](https://huggingface.co/litagin/anime-whisper), [Belle-whisper-large-v3-zh-punct](https://huggingface.co/BELLE-2/Belle-whisper-large-v3-zh-punct), [whisper-large-v3-turbo-korean](https://huggingface.co/ghost613/whisper-large-v3-turbo-korean): per-language fine-tunes
+- [anime-whisper](https://huggingface.co/litagin/anime-whisper), [Belle-whisper-large-v3-zh-punct](https://huggingface.co/BELLE-2/Belle-whisper-large-v3-zh-punct), [whisper-large-v3-turbo-korean](https://huggingface.co/ghost613/whisper-large-v3-turbo-korean), [whisper-large-v3-russian](https://huggingface.co/antony66/whisper-large-v3-russian): per-language fine-tunes
 - [SpeechBrain ECAPA](https://huggingface.co/speechbrain/spkrec-ecapa-voxceleb): speaker embeddings
 - [pyannote segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0) (MIT, © 2023 CNRS): crosstalk detection.
   Its weights are included in [models/pyannote-segmentation-3.0](models/pyannote-segmentation-3.0) with their license
