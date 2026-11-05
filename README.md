@@ -147,7 +147,7 @@ model can be reloaded mid-job and cause CUDA OOM. In that case, re-run the job f
   wrong.
 - **Songs:** Song lyrics (e.g. opening/ending themes) are flagged by the LLM and left in the original language. Check the lyric boxes if it misses
   some.
-- **Chinese and Korean** are newer than Japanese and less tested. Chinese support targets Mandarin; Cantonese is detected as Chinese but
+- **Chinese** support targets Mandarin; Cantonese is detected as Chinese but
   transcribed less accurately. Spoken Chinese gives no dialogue cue for a
   character's gender, so it comes from the voice analysis and the LLM only.
 - **Russian and Ukrainian:** Ukrainian uses large-v3 alone, with no second recognizer. Whisper can confuse the two on little
