@@ -1,5 +1,5 @@
 "use strict";
-const LANG_NAMES = { ja: "Japanese", zh: "Chinese", ko: "Korean" };
+const LANG_NAMES = { ja: "Japanese", zh: "Chinese", ko: "Korean", ru: "Russian", uk: "Ukrainian" };
 const $app = document.getElementById("app");
 const player = document.getElementById("player");
 const COLORS = ["#e76f51", "#2a9d8f", "#8e7dbe", "#e9c46a", "#4ea8de", "#f4a261", "#90be6d", "#f28482", "#577590", "#b5838d"];
@@ -51,7 +51,7 @@ async function renderHome() {
       <div class="row" style="margin-top:10px">
         <label>Spoken language
           <select name="language">
-            ${[["auto", "Detect automatically"], ["ja", "Japanese"], ["zh", "Chinese (Mandarin)"], ["ko", "Korean"]].map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}
+            ${[["auto", "Detect automatically"], ["ja", "Japanese"], ["zh", "Chinese (Mandarin)"], ["ko", "Korean"], ["ru", "Russian"], ["uk", "Ukrainian"]].map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}
           </select>
         </label>
         <label title="Optional. Everything is filled in automatically; no knowledge of the original language or the source material needed."><input type="checkbox" name="review"> Let me check characters and lines before voicing (optional)</label>

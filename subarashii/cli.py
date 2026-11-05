@@ -100,7 +100,7 @@ def cmd_serve(args):
 
 
 def main():
-    ap = argparse.ArgumentParser(prog="subarashii", description="Japanese / Chinese / Korean -> English dubbing")
+    ap = argparse.ArgumentParser(prog="subarashii", description="Japanese / Chinese / Korean / Russian / Ukrainian -> English dubbing")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def common(p):

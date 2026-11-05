@@ -4,15 +4,15 @@ A local LLM guesses confidently and often wrongly, so its claims are checked in 
 - a name is kept only if the dialogue shows it (the character is addressed by that name and
   answers, or introduces themselves); otherwise the card gets a plain description;
 - gender comes first from hard dialogue evidence (Japanese self-pronouns 俺/僕 vs あたし and
-  gendered sentence endings; Korean kinship terms 오빠/언니 vs 형/누나), then the voice analysis,
-  then the LLM.
+  gendered sentence endings; Korean kinship terms 오빠/언니 vs 형/누나; Russian and Ukrainian
+  verbs and adjectives agreeing with "I", я сказал/сказала), then the voice analysis, then the LLM.
 """
 
 import json
 
 from ..config import Cfg
 from ..gpu import TTSClient
-from ..lang import INTRO, gender_score, job_lang, romanize_name
+from ..lang import INTRO, LANGS, gender_score, job_lang, name_in, romanize_name
 from ..llm import get_llm
 from ..project import Job, Speaker
 
@@ -40,6 +40,10 @@ PROMPT_HINTS = {
     "zh": {"cues": "terms of address like 哥/姐/师兄/师父,", "intro_examples": "我叫…, 我是…"},
     "ko": {"cues": "kinship terms (a girl says 오빠/언니, a boy says 형/누나), speech level (반말/존댓말),",
            "intro_examples": "저는 …입니다, 제 이름은 …예요"},
+    "ru": {"cues": "verbs and adjectives agreeing with я (я сказал/сказала, я рад/рада), ты vs вы, name and patronymic,",
+           "intro_examples": "Меня зовут …, Я — …"},
+    "uk": {"cues": "verbs and adjectives agreeing with я (я сказав/сказала, я радий/рада), ти vs ви, name and patronymic,",
+           "intro_examples": "Мене звати …, Я — …"},
 }
 
 SCHEMA = {
@@ -108,11 +112,12 @@ def dialogue_gender(job: Job, sid: str, code: str) -> str:
 def name_is_proven(job: Job, sid: str, name_ja: str, evidence: int, code: str) -> bool:
     """The name must appear in the evidence line, which is either the speaker introducing themselves
     or someone else addressing them right before they speak."""
-    if not name_ja or len(name_ja) > 12:
+    lang = LANGS[code]
+    if not name_ja or len(name_ja) > (30 if lang.inflected else 12):
         return False
     lines = job.p.lines
     idx = next((i for i, l in enumerate(lines) if l.id == evidence), None)
-    if idx is None or name_ja not in lines[idx].ja:
+    if idx is None or not name_in(name_ja, lines[idx].ja, lang):
         return False
     line = lines[idx]
     if line.speaker == sid:
