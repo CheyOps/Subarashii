@@ -150,9 +150,7 @@ model can be reloaded mid-job and cause CUDA OOM. In that case, re-run the job f
 - **Chinese and Korean** are newer than Japanese and less tested. Chinese support targets Mandarin; Cantonese is detected as Chinese but
   transcribed less accurately. Spoken Chinese gives no dialogue cue for a
   character's gender, so it comes from the voice analysis and the LLM only.
-- **Russian and Ukrainian** are the newest and haven't been tested on real episodes yet; their speech
-  recognizers and timing ratio were chosen on read speech (FLEURS). Ukrainian uses large-v3 alone: the
-  only Whisper fine-tune recognized less accurately. Whisper can confuse the two on little
+- **Russian and Ukrainian:** Ukrainian uses large-v3 alone, with no second recognizer. Whisper can confuse the two on little
   speech, so the log shows the runner-up when it's close; set the language explicitly for short clips or
   dialogue that mixes them.
 - **No lip re-animation:** the video is never altered; sync comes from timing and phrasing only.
