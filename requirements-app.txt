@@ -1,6 +1,11 @@
 # torch / torchaudio come from the shared base stage (docker/Dockerfile)
 faster-whisper==1.2.1
 audio-separator[gpu]==0.48.0
+# onnxruntime 1.31 is built for CUDA 13 and warns about missing libraries on this CUDA 12.8 image.
+# faster-whisper installs the CPU package and audio-separator[gpu] the GPU one; both share one
+# folder, so keep them on the same version
+onnxruntime==1.25.0
+onnxruntime-gpu==1.25.0
 speechbrain==1.1.2
 pyannote.audio==3.4.0
 transformers==4.57.1
