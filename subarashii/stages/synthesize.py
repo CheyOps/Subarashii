@@ -48,7 +48,8 @@ REFIT_SCHEMA = {
 
 class VoiceMatch:
     """How close a take sounds to the original speaker: cosine similarity of ECAPA voice embeddings
-    against the average of the speaker's own lines."""
+    against the average of the speaker's own lines. Runs on the CPU: the translator LLM is loaded
+    with every layer on the GPU for the refit rounds, and even a CUDA context here would starve it."""
 
     def __init__(self, job: Job, cfg: Cfg):
         self.job, self.cfg = job, cfg
@@ -64,14 +65,14 @@ class VoiceMatch:
             self.enc = EncoderClassifier.from_hparams(
                 source=self.cfg.diarization.embedding_model,
                 savedir=str(models_dir(self.cfg) / "speechbrain" / "ecapa"),
-                run_opts={"device": "cuda"},
+                run_opts={"device": "cpu"},
             )
         if sr != 16000:
             import librosa
 
             y = librosa.resample(y, orig_sr=sr, target_sr=16000, res_type="soxr_hq")
         with torch.no_grad():
-            e = self.enc.encode_batch(torch.from_numpy(y).unsqueeze(0).cuda()).squeeze().float().cpu().numpy()
+            e = self.enc.encode_batch(torch.from_numpy(y).unsqueeze(0)).squeeze().float().cpu().numpy()
         return e / (np.linalg.norm(e) + 1e-9)
 
     def centroid(self, sid: str) -> np.ndarray:
@@ -91,7 +92,6 @@ class VoiceMatch:
 
     def close(self):
         self.enc = None
-        empty_torch_cache()
 
 
 class Fitter:

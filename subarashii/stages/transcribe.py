@@ -236,7 +236,9 @@ def _finetuned_whisper(job: Job, cfg: Cfg, model: str, gen_config: str, language
     # KV cache until the GPU runs out (max_line_seconds of speech never needs more)
     kwargs = {"language": language.lower(), "no_repeat_ngram_size": 0, "repetition_penalty": 1.0,
               "max_new_tokens": 160}
-    out, batch = [], 8
+    # beam search keeps a cross-attention cache per beam per decoder layer: a 32-layer large-v3
+    # fine-tune at batch 8 needs ~13 GB, a distilled/turbo one a fraction of that
+    out, batch = [], 8 if pipe.model.config.decoder_layers <= 8 else 2
     for i in range(0, len(clips), batch):
         inputs = [{"raw": np.ascontiguousarray(x), "sampling_rate": SR} for x in clips[i : i + batch]]
         out += [(r.get("text") or "").strip() for r in pipe(inputs, generate_kwargs=kwargs, batch_size=batch)]
